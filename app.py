@@ -9,8 +9,10 @@ import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func, inspect
+from sqlalchemy.sql import label
 import pandas as pd
 import matplotlib.dates as mdates
+from datetime import datetime
 
 # setting path to hawaii.sqlite file.
 database_path = "Resources/hawaii.sqlite"
@@ -59,11 +61,8 @@ prcp_data_2017["date"] = prcp_data_2017["date"].astype("datetime64[ns]")
 # previewing prcp_data_2017 data
 prcp_data_2017.head()
 
-# setting the pandas_data_2017 index as the date.
+# setting prcp_data_2017 index as date.
 prcp_data_2017 = prcp_data_2017.set_index("date")
-
-# previewing the change made above.
-prcp_data_2017.head()
 
 # sorting the pandas_data_2017 to have all dates appear in order.
 sorted_prcp_data_2017 = prcp_data_2017.sort_index()
@@ -77,7 +76,7 @@ sorted_prcp_data_2017 = sorted_prcp_data_2017.dropna()
 # previewing the changes made worked.
 sorted_prcp_data_2017.head()
 
-# creating a dictionary out of sorted_prcp dataframe with dates as the keys.
+# creating a dictionary out of sorted_prcp dataframe with dates as the keys, which is for the purpose of creating an api page that will be done towards the bottom.
 prcp_dict = sorted_prcp_data_2017.reset_index()
 # converting date column to string.
 prcp_dict["date"] = prcp_dict["date"].astype(str)
@@ -93,7 +92,7 @@ prcp_dict["2016-08-23"]
 fig, ax = plt.subplots()
 sorted_prcp_data_2017.plot(ax=ax)
 # creating labels for the barchart.
-plt.title("Precipitation levels throughout Hawaii (2017)")
+plt.title("Precipitation levels throughout Hawaii (2016-2017)")
 plt.ylabel("Precipitation Levels")
 # #set ticks every month
 ax.xaxis.set_major_locator(mdates.MonthLocator())
@@ -108,21 +107,13 @@ number_of_stations = session.query(Station.id, Station.name).count()
 # printing out the results into readable form.
 print(f"There are {number_of_stations} stations in our hawaii database")
 
-# creating a list of the station names in order to create json list on api page.
-stations = session.query(Station.id, Station.name)
-station_names = []
-for name in stations:
-    station_names.append(name[1])
-# previewing results.
-station_names
-
-# counting the number of observations(temperature observations data) of each station from 2011-2017 and recording them in order from greatest to least in a list variable.
+# counting the number of observations(temperature observations data) of each station from 2010-2017 and recording them in order from greatest to least in a list variable.
 observation_count = session.query(Station.name, Measurement.station, func.count(Measurement.tobs)).    filter(Measurement.station == Station.station).group_by(Measurement.station).order_by(func.count(Measurement.tobs).desc()).all()
 
 # checking the results of the observation count query preformed above that is contained in a list variable.
 observation_count
 
-# printing what station had most temperature observations from 2011-2017 and the corresponding number of recordings.
+# printing what station had most temperature observations from 2010-2017 and the corresponding number of recordings.
 print(f"Station {observation_count[0][0]} had the most temperature observation data recordings totaling {observation_count[0][2]} from 2011-2017.")
 
 # counting the number of temperature observations for last 12 months of data according to each station and ordering them from greatest to least within a list variable.
@@ -134,23 +125,23 @@ tobs_data
 # verifing name of the station with most frequent temp observations.
 tobs_data[0][0]
 
-# Based on the above filtration, filtering the data to give us only the data of the station that had the most temperature observations for last 12 months..
-most_frequent_data = session.query(Measurement.station, Station.name, Measurement.tobs, Measurement.date).    filter(Measurement.station == Station.station).    filter(Measurement.date >= "2016-08-23").    filter(Measurement.date <= "2017-08-23").    filter(Station.name == tobs_data[0][0]).all()
+# Based on the above filtration, filtering the data to give us only the data of the station that had the most temperature observations for last 12 months.
+most_frequent_station = session.query(Measurement.station, Station.name, Measurement.tobs, Measurement.date).    filter(Measurement.station == Station.station).    filter(Measurement.date >= "2016-08-23").    filter(Measurement.date <= "2017-08-23").    filter(Station.name == tobs_data[0][0]).all()
 
 # verifing the above process worked.
-most_frequent_data[0:10]
+most_frequent_station[0:10]
 
 # creating a pandas dataframe from above list in order to create a histogram.
-tob_most_frequent_data = pd.DataFrame(most_frequent_data, columns=["Station", "Name of Station", "Temperature Observation", "Date"])
+tob_most_frequent_station = pd.DataFrame(most_frequent_station, columns=["Station", "Name of Station", "Temperature Observation", "Date"])
 
 # removing the station columnns and date column.
-tob_most_frequent_data = tob_most_frequent_data[["Name of Station", "Temperature Observation"]]
+tob_most_frequent_station = tob_most_frequent_station[["Name of Station", "Temperature Observation"]]
 
 # previewing the pandas_most_frequent_data dataframe.
-tob_most_frequent_data.head()
+tob_most_frequent_station.head()
 
 # creating a histogram that shows the most frequent temperature observations in the last 12 months at Waikiki, which had the most temperature observations out of all the weather stations.
-tob_most_frequent_data.hist(bins=12)
+tob_most_frequent_station.hist(bins=12)
 # labeling the histogram.
 plt.title("Frequency of Temperatures recorded at Waikiki for last 12 Months")
 plt.ylabel("Frequency")
@@ -159,10 +150,7 @@ plt.xlim(60,83)
 # saving histogram as png file.
 # plt.savefig("Frequency of Temperatures recorded at Waikiki (station with most observations) for last 12 Months")
 
-# creating a list of temperature observation data throughout the last 12 months, including the station did the recording and on what date, for the purpose of putting online. 
-tobs_app = session.query(Station.name, Measurement.tobs, Measurement.date).    filter(Measurement.station == Station.station).    filter(Measurement.date >= "2016-08-23").    filter(Measurement.date <= "2017-08-23").all()
-# previewing the results.
-tobs_app[0:10]
+# From here on out creating an online webpage application using flask.
 
 # Importing Flask and Jsonify in order to create a server.
 from flask import Flask, jsonify
@@ -173,7 +161,9 @@ app = Flask(__name__)
 # Creating a route that will list available routes.
 @app.route("/")
 def home():
+    # printing backend response.
     print("Server received request for 'home' page...")
+    # printing frontend response.
     return (
         f"Available Routes:<br/>"
         f"/api/v1.0/precipitation<br/>" 
@@ -184,22 +174,88 @@ def home():
 
 # creating a route to precipitation data for the last 12 months in Hawaii at multiple stations.
 @app.route("/api/v1.0/precipitation")
+# creating the calculating function that uses the prcp_dict variable created above if you recall.
 def precipitation():
+    # printing the backend response.
     print("Server received request for 'precipitation' page...")
+    # printing frontend information.
     return jsonify(prcp_dict)
 
 # creating a route to find a list of that station names in Hawaii.
 @app.route("/api/v1.0/stations")
+# creating function.
 def stations():
+    # creating a session with the engine.
+    session = Session(engine)
+    # creating a list of the station names.
+    stations = session.query(Station.id, Station.name)
+    station_names = []
+    for name in stations:
+        station_names.append(name[1])
+    # printing back of house responses.
     print("Server received request for 'stations' page...")
+    # printing results on webpage.
     return jsonify(station_names)
 
-# developing a webpage with temperature observation data in Hawaii for the last 12 months.
+# developing a webpage with temperature observation data in Hawaii for the last 12 months at all stations.
 @app.route("/api/v1.0/tobs")
+# creating function to give me the info desired.
 def tobs():
+    # creating a connection to the Hawaii database.
+    session = Session
+    # creating a list of temperature observation data throughout the last 12 months, including the station that did the recording and on what date. 
+    tobs_app = session.query(Station.name, Measurement.tobs, Measurement.date).    filter(Measurement.station == Station.station).    filter(Measurement.date >= "2016-08-23").    filter(Measurement.date <= "2017-08-23").all()
+    # printing backend reponse.
     print("Server received request for 'tobs' page...")
+    # returning user information on webpage.
     return jsonify(tobs_app)
 
-# allowing the application to run.
+# developing webpage that calculates min, max, average temp from start date to very end, where user puts in start date.
+@app.route("/api/v1.0/<start>")
+# creating function that finds info from start date entered by user.
+def start_stats(start):
+    # creating new session with database.
+    session = Session(engine)
+    # finding the data based on user response.
+    # if user uses right date format.
+    try:
+       # finding the data based on user date response.
+        start = datetime.strptime(start, "%Y-%m-%d")
+        start_stat = session.query(label('low', func.min(Measurement.tobs)), label('high', func.max(Measurement.tobs)), label('average', func.avg(Measurement.tobs))).\
+            filter(Measurement.date >= start).all()
+        # printing the backend response.
+        print("Server received request for 'start' page...")
+        # printing the results to the user.
+        return jsonify(start_stat)
+    # if user uses wrong date format.
+    except:
+        # reponse to user on webpage if used wrong date format.
+        return jsonify("error: Either date not found in database or not in proper format (ie.2017-03-05) not (2014/02/12), (08/12/2017), ect...")
+
+# creating webpage like above that calculates the min, max, average temp, but where user puts both start and end date..
+@app.route("/api/v1.0/<start>/<end>")
+# creating the function to calculate the above wants.
+def start_end_stats(start, end):
+    # creating that session again.
+    session = Session(engine)
+    # if user uses right date format.
+    try:
+        # setting date into specific format.
+        start = datetime.strptime(start, "%Y-%m-%d")
+        end = datetime.strptime(end, "%Y-%m-%d")
+        # looking for date in database.
+        start_end_stat = session.query(label('low', func.min(Measurement.tobs)), label('high', func.max(Measurement.tobs)), label('average', func.avg(Measurement.tobs))).\
+            filter(Measurement.date >= start).\
+            filter(Measurement.date <= end).all()
+    
+        # printing the backend response.
+        print("Server received request for 'start and end dates' page...")
+        # printing the results to the user.
+        return jsonify(start_end_stat)
+    # if user uses wrong date format.
+    except:
+        # reponse to user on webpage if used wrong date format.
+        return jsonify("error: Either date not found in database or not in proper format (ie.2017-03-05) not (2014/02/12), (08/12/2017), ect...")
+
 if __name__ == "__main__":
     app.run(debug=True)
