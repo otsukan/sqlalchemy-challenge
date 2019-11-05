@@ -316,7 +316,7 @@ december = pd.DataFrame(december_temperature)
 # calculating the t-score between June and December.
 ttest_ind(june["tobs"], december["tobs"])
 
-# The paired ttest tells us that June and December are statistically significant. Also, not sure if using right ttest.
+# The paired ttest tells us that June and December are statistically significant.
 
 # Temperature analsis II
 
